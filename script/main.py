@@ -1,6 +1,13 @@
 import pandas as pd
+import numpy as np
 import os
+import sys
 from datetime import datetime
+# from ..ui.plot_ui import launch_ui
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from ui.plot_ui import launch_ui
+
 
 
 path = r"C:\Users\vyasn\OneDrive\Desktop\Academics\Project_1\ECG_Visual\data\Raw_Data.csv"
@@ -27,17 +34,17 @@ print("\n Channel stats:\n", df.iloc[:, 1:].describe())
 # --- Step 5: Normalize timestamps (~line 25 onwards) ---
 def parse_timestamp(x):
     try:
-        return datetime.strptime(x, '%Y-%m-%d %H:%M:%S:%f')  # full datetime
+        return datetime.strptime(str(x), '%Y-%m-%d %H:%M:%S:%f')  # full datetime
     except ValueError:
         try:
-            return datetime.strptime(x, '%H:%M:%S:%f')  # time only
+            return datetime.strptime(str(x), '%H:%M:%S:%f')  # time only
         except ValueError:
             return pd.NaT
 
 df['timestamp'] = df['timestamp'].apply(parse_timestamp)
 
 # --- Step 6: Drop rows with bad timestamps ---
-df.dropna(subset=['timestamp'], inplace=True)
+df.dropna(inplace=True)
 df.reset_index(drop=True, inplace=True)
 
 # --- Step 7: Check sampling interval (~line 35) ---
@@ -53,3 +60,19 @@ print(nan_counts[nan_counts > 0])
 # Optional: Drop or fill missing values
 df.dropna(inplace=True)
 df.reset_index(drop=True, inplace=True)
+
+# --- Step 9: Remove extreme spikes using IQR method ---
+for col in df.columns[1:]:  # skip 'timestamp'
+    Q1 = df[col].quantile(0.25)
+    Q3 = df[col].quantile(0.75)
+    IQR = Q3 - Q1
+    lower = Q1 - 1.5 * IQR
+    upper = Q3 + 1.5 * IQR
+    df[col] = np.where((df[col] < lower) | (df[col] > upper), np.nan, df[col])
+
+# --- Fill gaps after removing outliers ---
+df.interpolate(limit_direction='both', inplace=True)
+
+
+if __name__ == "__main__":
+    launch_ui(df)
