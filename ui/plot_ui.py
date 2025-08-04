@@ -1,8 +1,62 @@
 from PyQt5.QtWidgets import QWidget, QPushButton, QGridLayout, QHBoxLayout, QVBoxLayout, QApplication, QSlider, QLabel
 from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QColor
 import pyqtgraph as pg
 import sys
 import numpy as np
+
+
+class ECGButton(QWidget):
+    def __init__(self, channel_number):
+        super().__init__()
+
+        self.setStyleSheet("background-color: transparent; border: none;")
+        self.channel_number = channel_number
+
+        # Top label - Channel name
+        self.label_name = QLabel(f'ch_{channel_number}')
+        self.label_name.setStyleSheet("font-size: 12px; color: black; background-color: transparent; border: none;")
+
+        # Bottom label - Dynamic ECG value
+        self.label_value = QLabel("0.00")
+        self.label_value.setStyleSheet("font-size: 14px; color: black; background-color: transparent; border: none;")
+
+        # Container widget to hold both labels and apply border/background
+        self.container = QWidget(self)
+        self.container.setStyleSheet("""
+            background-color: #ffffff;
+            border: 1px solid black;
+            border-radius: 10px;
+        """)
+
+        # Layout for the container
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+        container_layout.addWidget(self.label_name, alignment=Qt.AlignHCenter)
+        container_layout.addWidget(self.label_value, alignment=Qt.AlignHCenter)
+        self.container.setLayout(container_layout)
+
+        # Outer layout of ECGButton
+        outer_layout = QVBoxLayout()
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        outer_layout.addWidget(self.container)
+        self.setLayout(outer_layout)
+
+        self.setFixedSize(60, 60)
+
+    def update_button(self, value: float):
+        self.label_value.setText(f"{value:.2f}")
+
+        value = max(800, min(65000, value))
+
+        gray = int(255 * (1 - (value - 800) / (65000 - 800)))
+        gray_hex = f"{gray:02x}"
+        color = f"#{gray_hex}{gray_hex}{gray_hex}"
+
+        # Apply background to the container
+        self.container.setStyleSheet(f"background-color: {color}; border-radius: 5px;")
 
 class ECGViewer(QWidget):
     def __init__(self, df):
@@ -35,6 +89,7 @@ class ECGViewer(QWidget):
             max_index = len(self.selected_channel_data)
             new_index = int((value / 100) * max_index)
             self.current_index = new_index
+            self.update_all_buttons(new_index)
             self.update_plot()
 
     def init_ui(self):
@@ -106,38 +161,34 @@ class ECGViewer(QWidget):
 
         slider_layout.addWidget(self.seek_slider)
 
-        # --- Channel Button Grid ---
         self.grid_layout = QGridLayout()
+
         self.buttons = []
         for i in range(40):
-            btn = QPushButton(f'ch_{i + 1}')
-            btn.setFixedSize(60, 60)
-            btn.setStyleSheet("""
-                QPushButton {
-                    font-size: 12px;
-                    color: black;
-                    background-color: 000000;
-                    border: 1px solid #444;
-                    border-radius: 10px;
-                }
-                QPushButton:hover {
-                    background-color: #3c3c3c;
-                }
-                QPushButton:pressed {
-                    background-color: #003300;
-                }
-            """)
-            btn.clicked.connect(self.make_plot_callback(i + 1))
+            btn = ECGButton(i + 1)
+            btn.mousePressEvent = lambda e, ch=i + 1: self.make_plot_callback(ch)()
             row, col = divmod(i, 8)
             self.grid_layout.addWidget(btn, row, col)
             self.buttons.append(btn)
 
         # --- Left Section (Controls + Buttons) ---
         left_container = QVBoxLayout()
-        left_container.addLayout(button_layout)
-        left_container.addLayout(slider_layout)
-        left_container.addLayout(self.grid_layout)
 
+        # --- Top Control Panel Container ---
+        left_up_layout = QVBoxLayout()
+        left_down_layout = QVBoxLayout()
+
+        left_up_layout.addLayout(button_layout)
+        left_up_layout.addSpacing(20)
+        left_up_layout.addLayout(slider_layout)
+
+        left_up_layout.addLayout(slider_layout)
+        left_down_layout.addLayout(self.grid_layout)
+
+        left_container.addLayout(left_up_layout)
+        left_container.addLayout(left_down_layout)
+
+        left_container.addLayout(self.grid_layout)
         # --- Plot Area ---
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.setLabel('left', 'ECG Reading')
@@ -185,14 +236,23 @@ class ECGViewer(QWidget):
         y = self.selected_channel_data[start_idx:self.current_index]
 
         self.plot_data_item.setData(x, y)
+        self.update_all_buttons(self.current_index)
+
         if self.selected_channel_data is not None and len(self.selected_channel_data) > 0:
             self.seek_slider.blockSignals(True)
             slider_value = min(100, round((self.current_index / len(self.selected_channel_data)) * 100))
             self.seek_slider.setValue(slider_value)
-
             self.seek_slider.blockSignals(False)
 
         self.current_index += 1
+
+    def update_all_buttons(self, index: int):
+        if index < 0 or index >= len(self.df):
+            return
+
+        for i, btn in enumerate(self.buttons):
+            value = self.df.iloc[index, i + 1] if (i + 1) < self.df.shape[1] else 0
+            btn.update_button(value)
 
 
 def launch_ui(df):
