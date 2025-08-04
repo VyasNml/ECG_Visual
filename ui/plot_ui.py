@@ -1,9 +1,11 @@
 from PyQt5.QtWidgets import QWidget, QPushButton, QGridLayout, QHBoxLayout, QVBoxLayout, QApplication, QSlider, QLabel
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QColor
+from PyQt5.QtCore import Qt, QTimer, QDateTime
+from PyQt5.QtGui import QPixmap, QPainter
+from datetime import datetime
 import pyqtgraph as pg
 import sys
 import numpy as np
+import os
 
 
 class ECGButton(QWidget):
@@ -73,6 +75,7 @@ class ECGViewer(QWidget):
         self.selected_time_data = (timestamps - timestamps[0]) / np.timedelta64(1, 's')  # convert to seconds
         self.is_paused = False
 
+        self.timestamp_label = QLabel()
         self.init_ui()
 
     def toggle_plot(self):
@@ -89,11 +92,40 @@ class ECGViewer(QWidget):
             max_index = len(self.selected_channel_data)
             new_index = int((value / 100) * max_index)
             self.current_index = new_index
-            self.update_all_buttons(new_index)
             self.update_plot()
+            self.update_all_buttons(new_index)
+
+    def save_current_plot(self):
+
+        # Create pixmap with the same size as the widget
+        size = self.plot_widget.size()
+        pixmap = QPixmap(size)
+        pixmap.fill(Qt.white)
+
+        # Use QPainter to render the widget into the pixmap
+        painter = QPainter(pixmap)
+        self.plot_widget.render(painter)
+        painter.end()
+
+        # Create assets directory if not exists
+        save_dir = os.path.join(os.path.dirname(__file__), '..', 'assets')
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Timestamped filename
+        timestamp = QDateTime.currentDateTime().toString("yyyyMMdd_HHmmss")
+        file_path = os.path.join(save_dir, f"ecg_plot_{timestamp}.png")
+
+        # Save to file
+        pixmap.save(file_path)
+
+        print(f"Plot saved to {file_path}")
 
     def init_ui(self):
         main_layout = QHBoxLayout()
+
+        self.timestamp_label = QLabel("Timestamp: ")
+        self.timestamp_label.setStyleSheet("color: red; background-color: black; font-size: 12px; padding: 4px;")
+        self.timestamp_label.setAlignment(Qt.AlignCenter)
 
         # --- Top Controls: Toggle + Reset + Slider ---
         button_layout = QHBoxLayout()
@@ -107,6 +139,9 @@ class ECGViewer(QWidget):
 
         self.exit_btn = QPushButton("Exit")
         self.exit_btn.clicked.connect(QApplication.quit)
+
+        self.save_btn = QPushButton("Save")
+        self.save_btn.clicked.connect(self.save_current_plot)
 
         self.seek_slider = QSlider(Qt.Horizontal)
         self.seek_slider.setRange(0, 100)
@@ -136,7 +171,7 @@ class ECGViewer(QWidget):
         self.seek_slider.valueChanged.connect(self.seek_to_position)
 
         # Apply consistent style
-        for btn in [self.toggle_btn, self.reset_btn, self.exit_btn]:
+        for btn in [self.toggle_btn, self.reset_btn, self.exit_btn, self.save_btn]:
             btn.setFixedHeight(40)
             btn.setFixedWidth(60)
             btn.setStyleSheet("""
@@ -158,6 +193,7 @@ class ECGViewer(QWidget):
         button_layout.addWidget(self.toggle_btn)
         button_layout.addWidget(self.reset_btn)
         button_layout.addWidget(self.exit_btn)
+        button_layout.addWidget(self.save_btn)
 
         slider_layout.addWidget(self.seek_slider)
 
@@ -196,7 +232,13 @@ class ECGViewer(QWidget):
         self.plot_widget.showGrid(x=True, y=True)
 
         main_layout.addLayout(left_container, 1)
-        main_layout.addWidget(self.plot_widget, 3)
+        self.plot_widget = pg.PlotWidget()
+        plot_container = QVBoxLayout()
+        plot_container.setSpacing(0)
+        plot_container.setContentsMargins(0, 0, 0, 0)
+        plot_container.addWidget(self.plot_widget)
+        plot_container.addWidget(self.timestamp_label)
+        main_layout.addLayout(plot_container, 3)
 
         self.setLayout(main_layout)
         self.setStyleSheet("background-color: 000000;")
@@ -234,6 +276,8 @@ class ECGViewer(QWidget):
         start_idx = max(0, self.current_index - window_size)
         x = self.selected_time_data[start_idx:self.current_index]
         y = self.selected_channel_data[start_idx:self.current_index]
+
+        self.timestamp_label.setText(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
         self.plot_data_item.setData(x, y)
         self.update_all_buttons(self.current_index)

@@ -3,11 +3,8 @@ import numpy as np
 import os
 import sys
 from datetime import datetime
-# from ..ui.plot_ui import launch_ui
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 from ui.plot_ui import launch_ui
-
 
 
 path = r"C:\Users\vyasn\OneDrive\Desktop\Academics\Project_1\ECG_Visual\data\Raw_Data.csv"
