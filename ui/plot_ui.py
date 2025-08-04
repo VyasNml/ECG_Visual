@@ -7,7 +7,9 @@ import numpy as np
 class ECGViewer(QWidget):
     def __init__(self, df):
         super().__init__()
+        self.data = None
         self.df = df
+        self.total_points = len(self.df)
         self.setWindowTitle("ECG Viewer")
 
         # Plot state
@@ -16,10 +18,6 @@ class ECGViewer(QWidget):
         timestamps = self.df['timestamp'].values
         self.selected_time_data = (timestamps - timestamps[0]) / np.timedelta64(1, 's')  # convert to seconds
         self.is_paused = False
-
-        # self.selected_channel_label = QLabel("Selected Channel: None")
-        # self.selected_channel_label.setAlignment(Qt.AlignCenter)
-        # self.layout.addWidget(self.selected_channel_label)
 
         self.init_ui()
 
@@ -32,11 +30,19 @@ class ECGViewer(QWidget):
         self.current_index = 0
         print("Plot reset.")
 
+    def seek_to_position(self, value):
+        if self.selected_channel_data is not None and len(self.selected_channel_data) > 0:
+            max_index = len(self.selected_channel_data)
+            new_index = int((value / 100) * max_index)
+            self.current_index = new_index
+            self.update_plot()
+
     def init_ui(self):
         main_layout = QHBoxLayout()
 
         # --- Top Controls: Toggle + Reset + Slider ---
-        control_layout = QHBoxLayout()
+        button_layout = QHBoxLayout()
+        slider_layout = QHBoxLayout()
 
         self.toggle_btn = QPushButton("Pause")
         self.toggle_btn.clicked.connect(self.toggle_plot)
@@ -44,12 +50,38 @@ class ECGViewer(QWidget):
         self.reset_btn = QPushButton("Reset")
         self.reset_btn.clicked.connect(self.reset_plot)
 
+        self.exit_btn = QPushButton("Exit")
+        self.exit_btn.clicked.connect(QApplication.quit)
+
         self.seek_slider = QSlider(Qt.Horizontal)
         self.seek_slider.setRange(0, 100)
-        self.seek_slider.setStyleSheet("background-color: #222;")
+        self.seek_slider.setStyleSheet("""
+            QSlider {
+                background: white;
+            }
+
+            QSlider::groove:horizontal {
+                border: none;
+                height: 6px;
+                background: black;
+                border-radius: 3px;
+            }
+
+            QSlider::handle:horizontal {
+                background-color: black;
+                border: 2px solid white;
+                width: 16px;
+                height: 16px;
+                margin: -6px 0;  /* centers the circle */
+                border-radius: 8px;  /* half of width/height to make it a circle */
+            }
+        """)
+
+        # self.seek_slider.setStyleSheet("background-color: #222;")
+        self.seek_slider.valueChanged.connect(self.seek_to_position)
 
         # Apply consistent style
-        for btn in [self.toggle_btn, self.reset_btn]:
+        for btn in [self.toggle_btn, self.reset_btn, self.exit_btn]:
             btn.setFixedHeight(40)
             btn.setFixedWidth(60)
             btn.setStyleSheet("""
@@ -68,9 +100,11 @@ class ECGViewer(QWidget):
                 }
             """)
 
-        control_layout.addWidget(self.toggle_btn)
-        control_layout.addWidget(self.reset_btn)
-        control_layout.addWidget(self.seek_slider)
+        button_layout.addWidget(self.toggle_btn)
+        button_layout.addWidget(self.reset_btn)
+        button_layout.addWidget(self.exit_btn)
+
+        slider_layout.addWidget(self.seek_slider)
 
         # --- Channel Button Grid ---
         self.grid_layout = QGridLayout()
@@ -100,7 +134,8 @@ class ECGViewer(QWidget):
 
         # --- Left Section (Controls + Buttons) ---
         left_container = QVBoxLayout()
-        left_container.addLayout(control_layout)
+        left_container.addLayout(button_layout)
+        left_container.addLayout(slider_layout)
         left_container.addLayout(self.grid_layout)
 
         # --- Plot Area ---
@@ -150,6 +185,13 @@ class ECGViewer(QWidget):
         y = self.selected_channel_data[start_idx:self.current_index]
 
         self.plot_data_item.setData(x, y)
+        if self.selected_channel_data is not None and len(self.selected_channel_data) > 0:
+            self.seek_slider.blockSignals(True)
+            slider_value = min(100, round((self.current_index / len(self.selected_channel_data)) * 100))
+            self.seek_slider.setValue(slider_value)
+
+            self.seek_slider.blockSignals(False)
+
         self.current_index += 1
 
 
